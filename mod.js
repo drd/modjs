@@ -1,3 +1,18 @@
+/***
+ * Revisions:
+ *
+ * 7-20-2016:
+ * - parses classic MOD files
+ * -- except details of effects and sample data
+ * - only works in node
+ *
+ * TODO:
+ * - make this work in a browser
+ * - parse the effect paramaters
+ * - read in the sample data
+ * - tests, lol
+ ***/
+
 "use strict";
 
 const fs = require('fs');
