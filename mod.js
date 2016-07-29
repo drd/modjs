@@ -28,6 +28,10 @@ function arrayToString(typedArray) {
     return str;
 }
 
+function invertObject(obj) {
+    return Object.keys(obj).reduce((o, k) => o[obj[k]] = k && o, {});
+}
+
 class Module {
     constructor(name) {
         this.name = name;
@@ -50,7 +54,7 @@ Module.fromBuffer = function(buffer) {
     for (let i = 0; i < Module.NUM_SAMPLES; i++) {
         const sampleBuffer = buffer.slice(offset, offset + Sample.SIZE_IN_BYTES);
         const sample = Sample.fromBuffer(sampleBuffer);
-        console.log(sample);
+        console.log(sample.toString());
         module.samples.push(sample);
 
         offset += Sample.SIZE_IN_BYTES;
@@ -69,12 +73,17 @@ Module.fromBuffer = function(buffer) {
     console.log(buffer.asciiSlice(offset, offset + 4));
     offset += 4;
 
-    for (let i = 0; i < numPatterns; i++) {
+    for (let i = 0; i <= numPatterns; i++) {
         const patternBuffer = buffer.slice(offset, offset + Pattern.SIZE_IN_BYTES);
         const pattern = Pattern.fromBuffer(patternBuffer);
         module.patterns.push(pattern);
         offset += Pattern.SIZE_IN_BYTES;
     }
+
+    module.samples.forEach(sample => {
+        sample.buffer = buffer.slice(offset, offset + sample.length);
+        offset += sample.length;
+    });
 
     return module;
 }
@@ -90,7 +99,10 @@ class Sample {
     }
 
     toString() {
-        return `${this.name}[${this.length}]`;
+        if (this.length == 0) {
+            return '<empty>';
+        }
+        return `${this.name}[${this.length}${this.repeatLength == 2 ? '' : `::${this.repeatOffset}:${this.repeatLength}`}]`;
     }
 }
 
@@ -98,14 +110,13 @@ Sample.NAME_LENGTH = 22;
 Sample.SIZE_IN_BYTES = 30;
 
 Sample.fromBuffer = function(sampleBuffer) {
-    console.log(sampleBuffer);
     const offset = sampleBuffer.byteOffset;
     const nameArray = new Uint8Array(sampleBuffer, 0, Sample.NAME_LENGTH);
-    const length = sampleBuffer.readUInt16BE(22);
+    const length = sampleBuffer.readUInt16BE(22) * 2; // sample length is in *words*
     const fineTune = sampleBuffer.readUInt8(24) & 0x0f;
     const volume = sampleBuffer.readUInt8(25);
-    const repeatOffset = sampleBuffer.readUInt16BE(26);
-    const repeatLength = sampleBuffer.readUInt16BE(28);
+    const repeatOffset = sampleBuffer.readUInt16BE(26) * 2;
+    const repeatLength = sampleBuffer.readUInt16BE(28) * 2;
 
     return new Sample(arrayToString(nameArray), length, fineTune, volume, repeatOffset, repeatLength);
 }
@@ -114,6 +125,10 @@ class Pattern {
     constructor(channels) {
         this.channels = channels;
         // bleh?
+    }
+
+    toString() {
+
     }
 }
 
@@ -128,13 +143,13 @@ Pattern.fromBuffer = function(buffer) {
         const position3 = buffer.readUInt32BE(offset + 12);
 
         channels[0].push(Note.fromUInt32(position0));
-        console.log(0, offset, channels[0][channels[0].length - 1]);
+        console.log(0, channels[0][i]);
         channels[1].push(Note.fromUInt32(position1));
-        console.log(1, offset, channels[1][channels[0].length - 1]);
+        console.log(1, channels[1][i]);
         channels[2].push(Note.fromUInt32(position2));
-        console.log(2, offset, channels[2][channels[0].length - 1]);
+        console.log(2, channels[2][i]);
         channels[3].push(Note.fromUInt32(position3));
-        console.log(3, offset, channels[3][channels[0].length - 1]);
+        console.log(3, channels[3][i]);
 
         offset += 16;
     }
@@ -159,9 +174,74 @@ class Note {
 Note.fromUInt32 = function(uint32) {
     const sample = ((uint32 & 0xf0000000) >> 24) | ((uint32 & 0xf000) >> 12);
     const period = (uint32 & 0x0fff0000) >> 16;
-    const effect = (uint32 & 0x0fff);
+    const effect = Effect.fromUInt16(uint32 & 0x0fff);
 
     return new Note(sample, period, effect);
+}
+
+class Effect {
+    constructor(type, arg1, arg2) {
+        this.type = type;
+        this.arg1 = arg1;
+        this.arg2 = arg2;
+    }
+
+    toString() {
+        if (this.type != Effect.TYPES.EXTENDED) {
+            const type = Effect.TYPES_INVERSE[this.arg1];
+            return `${this.type}[${this.arg1}:${this.arg2}]`;
+        } else {
+            const type = Effect.EXTENDED_TYPES_INVERSE[this.arg2];
+            return `${this.type}[${this.arg2}]`;
+        }
+    }
+}
+
+Effect.TYPES = {
+    ARPEGGIO:                0,
+    SLIDE_UP:                1,
+    SLIDE_DOWN:              2,
+    SLIDE_TO_NOTE:           3,
+    VIBRATO:                 4,
+    SLIDE_WITH_VOLUME:       5,
+    VIBRATO_WITH_VOLUME:     6,
+    TREMOLO:                 7,
+    UNUSED:                  8,
+    SET_SAMPLE_OFFSET:       9,
+    VOLUME_SLIDE:           10,
+    POSITION_JUMP:          11,
+    SET_VOLUME:             12,
+    PATTERN_BREAK:          13,
+    EXTENDED:               14,
+    SET_SPEED:              15,
+};
+Effect.TYPES_INVERSE = invertObject(Effect.TYPES);
+Effect.EXTENDED_TYPES = {
+    FILTER_TOGGLE:           0,
+    FINESLIDE_UP:            1,
+    FINESLIDE_DOWN:          2,
+    GLISSANDO_TOGGLE:        3,
+    SET_VIBRATO_WAVEFORM:    4,
+    SET_FINETUNE:            5,
+    LOOP_PATTERN:            6,
+    SET_TREMOLO_WAVEFORM:    7,
+    UNUSED:                  8,
+    RETRIGGER_SAMPLE:        9,
+    FINE_VOLUME_SLIDE_UP:   10,
+    FINE_VOLUME_SLIDE_DOWN: 11,
+    CUT_SAMPLE:             12,
+    DELAY_SAMPLE:           13,
+    DELAY_PATTERN:          14,
+    INVERT_LOOP:            15,
+};
+Effect.EXTENDED_TYPES_INVERSE = invertObject(Effect.EXTENDED_TYPES);
+
+Effect.fromUInt16 = function(uint16) {
+    const type = (uint16 & 0x0f00) >> 8;
+    const arg1 = (uint16 & 0x00f0) >> 4;
+    const arg2 = uint16 & 0x000f;
+
+    return new Effect(type, arg1, arg2);
 }
 
 function test() {
@@ -172,6 +252,8 @@ function test() {
 }
 
 test();
+
+module.exports = {Module, Sample, Pattern, Note, Effect};
 
 /*****
 
