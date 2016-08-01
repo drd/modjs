@@ -5,6 +5,7 @@
  * - samples are 1-offset!
  * - "nifty" UI for showing playback
  * - wow, it actually works?
+ * - Hmm, sounds a lot better when converting samples to 32bit floats
  *
  * 7-31-2016:
  * - LOL, starting to play
@@ -32,8 +33,9 @@
 "use strict";
 
 const fs = require('fs');
-const Speaker = require('speaker');
 const Readable = require('stream').Readable;
+
+const Speaker = require('speaker');
 
 function rightPad(string, len) {
     while (string.length < len) {
@@ -106,7 +108,16 @@ Module.fromBuffer = function(buffer) {
     }
 
     module.samples.forEach(sample => {
-        sample.buffer = buffer.slice(offset, offset + sample.length);
+        const inBuffer = buffer.slice(offset, offset + sample.length);
+        sample.buffer = new Float32Array(sample.length);
+        for (let i = 0; i < sample.length; i++) {
+            const amplitude = inBuffer[i];
+            if (amplitude < 128) {
+                sample.buffer[i] = amplitude / 128.0;
+            } else {
+                sample.buffer[i] = (amplitude - 128.0) / 128.0 - 1.0;
+            }
+        }
         offset += sample.length;
     });
 
@@ -384,7 +395,7 @@ class Player {
                     output += channelOutput;
                 }
             }
-            buffer[i] = Math.floor(output / this.module.channels);
+            buffer[i] = output;
             this.offset++;
         }
     }
@@ -393,18 +404,24 @@ class Player {
 function test() {
     const buffer = fs.readFileSync('airwolf.mod');
     const module = Module.fromBuffer(buffer);
-    const speaker = new Speaker({
+    const format = {
         channels: 1,
-        bitDepth: 8,
+        bitDepth: 32,
+        float: true,
         sampleRate: 22050
-    });
+    };
+    const speaker = new Speaker(format);
 
     const player = new Player(module);
     const playerReadable = new Readable({
         read(size) {
-            const outBuffer = new Uint8Array(size);
+            const outBuffer = new Float32Array(size);
             player.mix(outBuffer);
-            this.push(new Buffer(outBuffer));
+            const bytes = new Buffer(size * 4)
+            for (let i = 0; i < size; i++) {
+                bytes.writeFloatLE(outBuffer[i], i * 4);
+            }
+            this.push(bytes);
             if (player.endOfSong) {
                 this.push(null);
             }
