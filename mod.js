@@ -1,15 +1,28 @@
 /***
  * Revisions:
  *
+ * 7-31-2016:
+ * - LOL, starting to play
+ * -- much of this was borrowed heavily from https://github.com/jhalme/webaudio-mod-player
+ * -- does not work very well
+ * - integrates 'speaker' module for audio output
+ *
+ * 7-29-2016:
+ * - parse effects/params
+ * - loads sample data
+ * - fixes sample length etc to be in words
+ *
  * 7-20-2016:
  * - parses classic MOD files
  * -- except details of effects and sample data
  * - only works in node
  *
  * TODO:
+ * - uh, does not seem to change pitch very well
+ * -- finetune?
+ * - is it correctly following mod structure?
+ * - effects?
  * - make this work in a browser
- * - parse the effect paramaters
- * - read in the sample data
  * - tests, lol
  ***/
 
@@ -37,6 +50,7 @@ function invertObject(obj) {
 class Module {
     constructor(name) {
         this.name = name;
+        this.channels = Module.NUM_CHANNELS;
         this.samples = [];
         this.patterns = [];
         this.patternTable = [];
@@ -47,6 +61,7 @@ Module.FILENAME_LENGTH = 20;
 
 // TODO: this depends on the file type
 Module.NUM_SAMPLES = 31;
+Module.NUM_CHANNELS = 4;
 
 Module.fromBuffer = function(buffer) {
     const nameArray = new Uint8Array(buffer, 0, Module.FILENAME_LENGTH - 1);
@@ -246,7 +261,90 @@ Effect.fromUInt16 = function(uint16) {
     return new Effect(type, arg1, arg2);
 }
 
+class Player {
+    constructor(module) {
+        this.module = module;
+        this.sampleRate = 22100;
+        this.bpm = 125;
+        this.speed = 6;
+        this.tick = 0;
+        this.offset = 0;
+        this.position = 0;
+        this.row = 0;
+        this.channels = []
+        for (let i = 0; i < module.channels; i++) {
+            this.channels.push({
+                noteOn: false,
+                sample: 0,
+                samplePos: 0,
+                period: 214,
+            });
+        }
+    }
 
+    advance() {
+        const speed = (((this.sampleRate*60)/this.bpm)/4)/this.speed;
+        if (this.offset>speed) {
+            this.tick++;
+            this.offset=0;
+            console.log("Tick: ", this.tick);
+        }
+
+        if (this.tick > this.speed) {
+            this.row++;
+            this.tick = 0;
+            console.log("Row: ", this.row);
+        }
+
+        if (this.row >= 64) {
+            this.position++;
+            this.row = 0;
+            console.log("Position: ", this.position);
+        }
+
+        if (this.position >= this.module.patternTable.length) {
+            this.endOfSong = true;
+        }
+    }
+
+    mix(buffer) {
+        for (let i = 0; i < buffer.length; i++) {
+            let output = 0.0;
+
+            this.advance();
+
+            if (!this.endOfSong) {
+                const pattern = this.module.patterns[this.module.patternTable[this.position]];
+
+                for (let channel = 0; channel < this.module.channels; channel++) {
+                    const note = pattern.channels[channel][this.row];
+                    const curChannel = this.channels[channel];
+                    if (note.sample != 0) {
+                        curChannel.noteOn = true;
+                        curChannel.sample = note.sample;
+                        curChannel.samplePos = 0;
+                        curChannel.period = note.period;
+                        curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
+                    }
+
+                    let channelOutput = 0;
+                    if (curChannel.noteOn) {
+                        const sample = this.module.samples[curChannel.sample];
+                        if (curChannel.samplePos < sample.length) {
+                            channelOutput = sample.buffer[Math.floor(curChannel.samplePos)];
+                            curChannel.samplePos += curChannel.sampleSpeed;
+                        } else {
+                            curChannel.noteOn = false;
+                        }
+                    }
+                    output += channelOutput;
+                }
+            }
+            buffer[i] = Math.floor(output / this.module.channels);
+            this.offset++;
+        }
+    }
+}
 
 function test() {
     const buffer = fs.readFileSync('airwolf.mod');
@@ -254,47 +352,22 @@ function test() {
     const speaker = new Speaker({
         channels: 1,
         bitDepth: 8,
-        sampleRate: 4000
+        sampleRate: 22100
     });
 
-    let sample = 0;
-    let currentOffset = 0;
-    let currentSample = module.samples[sample];
-
-    const pcmReadable = new Readable({
+    const player = new Player(module);
+    const playerReadable = new Readable({
         read(size) {
-            let bytesRemaining = size;
-            while (
-                bytesRemaining > 0 &&
-                currentSample !== undefined
-                && currentSample.buffer !== undefined
-            ) {
-                console.log(currentSample.name);
-                if (currentSample.length > currentOffset + bytesRemaining) {
-                    this.push(currentSample.buffer.slice(currentOffset, currentOffset + bytesRemaining));
-                    currentOffset += size;
-                    bytesRemaining = 0;
-                    if (currentOffset == currentSample.length - 1) {
-                        currentOffset = 0;
-                        currentSample = module.samples[++sample];
-                    }
-                } else {
-                    this.push(currentSample.buffer.slice(currentOffset, currentSample.length));
-                    bytesRemaining -= currentSample.length - currentOffset;
-                    currentOffset = 0;
-                    currentSample = module.samples[++sample];
-                }
-            }
-            if (
-                currentSample === undefined ||
-                currentSample.buffer === undefined
-            ) {
+            const outBuffer = new Uint8Array(size);
+            player.mix(outBuffer);
+            this.push(new Buffer(outBuffer));
+            if (player.endOfSong) {
                 this.push(null);
             }
         }
     });
 
-    pcmReadable.pipe(speaker);
+    playerReadable.pipe(speaker);
 }
 
 test();
