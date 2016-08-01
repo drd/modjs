@@ -16,6 +16,8 @@
 "use strict";
 
 const fs = require('fs');
+const Speaker = require('speaker');
+const Readable = require('stream').Readable;
 
 function arrayToString(typedArray) {
     let str = "";
@@ -244,11 +246,55 @@ Effect.fromUInt16 = function(uint16) {
     return new Effect(type, arg1, arg2);
 }
 
+
+
 function test() {
     const buffer = fs.readFileSync('airwolf.mod');
     const module = Module.fromBuffer(buffer);
+    const speaker = new Speaker({
+        channels: 1,
+        bitDepth: 8,
+        sampleRate: 4000
+    });
 
-    console.log(module.name);
+    let sample = 0;
+    let currentOffset = 0;
+    let currentSample = module.samples[sample];
+
+    const pcmReadable = new Readable({
+        read(size) {
+            let bytesRemaining = size;
+            while (
+                bytesRemaining > 0 &&
+                currentSample !== undefined
+                && currentSample.buffer !== undefined
+            ) {
+                console.log(currentSample.name);
+                if (currentSample.length > currentOffset + bytesRemaining) {
+                    this.push(currentSample.buffer.slice(currentOffset, currentOffset + bytesRemaining));
+                    currentOffset += size;
+                    bytesRemaining = 0;
+                    if (currentOffset == currentSample.length - 1) {
+                        currentOffset = 0;
+                        currentSample = module.samples[++sample];
+                    }
+                } else {
+                    this.push(currentSample.buffer.slice(currentOffset, currentSample.length));
+                    bytesRemaining -= currentSample.length - currentOffset;
+                    currentOffset = 0;
+                    currentSample = module.samples[++sample];
+                }
+            }
+            if (
+                currentSample === undefined ||
+                currentSample.buffer === undefined
+            ) {
+                this.push(null);
+            }
+        }
+    });
+
+    pcmReadable.pipe(speaker);
 }
 
 test();
