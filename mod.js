@@ -1,6 +1,11 @@
 /***
  * Revisions:
  *
+ * 8-1-2016:
+ * - samples are 1-offset!
+ * - "nifty" UI for showing playback
+ * - wow, it actually works?
+ *
  * 7-31-2016:
  * - LOL, starting to play
  * -- much of this was borrowed heavily from https://github.com/jhalme/webaudio-mod-player
@@ -18,9 +23,7 @@
  * - only works in node
  *
  * TODO:
- * - uh, does not seem to change pitch very well
- * -- finetune?
- * - is it correctly following mod structure?
+ * - needs a lowpass filter like something else
  * - effects?
  * - make this work in a browser
  * - tests, lol
@@ -31,6 +34,13 @@
 const fs = require('fs');
 const Speaker = require('speaker');
 const Readable = require('stream').Readable;
+
+function rightPad(string, len) {
+    while (string.length < len) {
+        string += " ";
+    }
+    return string.slice(0, len);
+}
 
 function arrayToString(typedArray) {
     let str = "";
@@ -71,7 +81,6 @@ Module.fromBuffer = function(buffer) {
     for (let i = 0; i < Module.NUM_SAMPLES; i++) {
         const sampleBuffer = buffer.slice(offset, offset + Sample.SIZE_IN_BYTES);
         const sample = Sample.fromBuffer(sampleBuffer);
-        console.log(sample.toString());
         module.samples.push(sample);
 
         offset += Sample.SIZE_IN_BYTES;
@@ -84,10 +93,9 @@ Module.fromBuffer = function(buffer) {
 
     const numPatterns = module.patternTable.reduce((max, pId) => pId > max ? pId : max, 0);
 
-    console.log(module.patternTable, numPatterns);
     offset += 128;
 
-    console.log(buffer.asciiSlice(offset, offset + 4));
+    // TODO: determine number of channels from signature
     offset += 4;
 
     for (let i = 0; i <= numPatterns; i++) {
@@ -133,7 +141,11 @@ Sample.fromBuffer = function(sampleBuffer) {
     const fineTune = sampleBuffer.readUInt8(24) & 0x0f;
     const volume = sampleBuffer.readUInt8(25);
     const repeatOffset = sampleBuffer.readUInt16BE(26) * 2;
-    const repeatLength = sampleBuffer.readUInt16BE(28) * 2;
+    let repeatLength = sampleBuffer.readUInt16BE(28) * 2;
+
+    if (repeatLength === 2) {
+        repeatLength = 0;
+    }
 
     return new Sample(arrayToString(nameArray), length, fineTune, volume, repeatOffset, repeatLength);
 }
@@ -160,13 +172,9 @@ Pattern.fromBuffer = function(buffer) {
         const position3 = buffer.readUInt32BE(offset + 12);
 
         channels[0].push(Note.fromUInt32(position0));
-        console.log(0, channels[0][i]);
         channels[1].push(Note.fromUInt32(position1));
-        console.log(1, channels[1][i]);
         channels[2].push(Note.fromUInt32(position2));
-        console.log(2, channels[2][i]);
         channels[3].push(Note.fromUInt32(position3));
-        console.log(3, channels[3][i]);
 
         offset += 16;
     }
@@ -201,6 +209,10 @@ class Effect {
         this.type = type;
         this.arg1 = arg1;
         this.arg2 = arg2;
+    }
+
+    isNonNull() {
+        return this.type | this.arg1 | this.arg2;
     }
 
     toString() {
@@ -272,6 +284,10 @@ class Player {
         this.position = 0;
         this.row = 0;
         this.channels = []
+        this.state = {
+            patternBreak: false,
+            newRow: true
+        };
         for (let i = 0; i < module.channels; i++) {
             this.channels.push({
                 noteOn: false,
@@ -284,22 +300,35 @@ class Player {
 
     advance() {
         const speed = (((this.sampleRate*60)/this.bpm)/4)/this.speed;
+
+        if (this.state.patternBreak) {
+            this.position++;
+            this.tick = 0;
+            this.row = 0;
+            this.state.patternBreak = false;
+        }
+
         if (this.offset>speed) {
             this.tick++;
             this.offset=0;
-            console.log("Tick: ", this.tick);
         }
 
         if (this.tick > this.speed) {
             this.row++;
             this.tick = 0;
-            console.log("Row: ", this.row);
+            this.state.newRow = true;
+            const pattern = this.module.patterns[this.module.patternTable[this.position]];
+            const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
+            console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
+        } else {
+            this.state.newRow = false;
         }
 
         if (this.row >= 64) {
             this.position++;
             this.row = 0;
-            console.log("Position: ", this.position);
+            this.state.newRow = true;
+            console.log("Position: ", this.position, "Pattern: ", this.module.patternTable[this.position]);
         }
 
         if (this.position >= this.module.patternTable.length) {
@@ -319,22 +348,37 @@ class Player {
                 for (let channel = 0; channel < this.module.channels; channel++) {
                     const note = pattern.channels[channel][this.row];
                     const curChannel = this.channels[channel];
-                    if (note.sample != 0) {
-                        curChannel.noteOn = true;
-                        curChannel.sample = note.sample;
-                        curChannel.samplePos = 0;
-                        curChannel.period = note.period;
-                        curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
+                    if (this.state.newRow) {
+                        if (note.sample != 0) {
+                            curChannel.noteOn = true;
+                            curChannel.sample = note.sample - 1;
+                            curChannel.samplePos = 0;
+                            curChannel.period = note.period;
+                            curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
+                        }
+                    }
+
+                    if (note.effect.isNonNull()) {
+                        if (note.effect.type === Effect.TYPES.PATTERN_BREAK) {
+                            this.state.patternBreak = true;
+                        }
                     }
 
                     let channelOutput = 0;
                     if (curChannel.noteOn) {
                         const sample = this.module.samples[curChannel.sample];
-                        if (curChannel.samplePos < sample.length) {
+                        curChannel.samplePos += curChannel.sampleSpeed;
+                        if (sample.repeatLength > 0) {
+                            if (curChannel.samplePos > sample.repeatOffset + sample.repeatLength) {
+                                curChannel.samplePos -= sample.repeatLength;
+                            }
                             channelOutput = sample.buffer[Math.floor(curChannel.samplePos)];
-                            curChannel.samplePos += curChannel.sampleSpeed;
                         } else {
-                            curChannel.noteOn = false;
+                            if (curChannel.samplePos < sample.length) {
+                                channelOutput = sample.buffer[Math.floor(curChannel.samplePos)];
+                            } else {
+                                curChannel.noteOn = false;
+                            }
                         }
                     }
                     output += channelOutput;
@@ -352,7 +396,7 @@ function test() {
     const speaker = new Speaker({
         channels: 1,
         bitDepth: 8,
-        sampleRate: 22100
+        sampleRate: 22050
     });
 
     const player = new Player(module);

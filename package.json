@@ -1,0 +1,30 @@
+{
+  "name": "modjs",
+  "version": "1.0.0",
+  "description": "A universal tracker for js",
+  "main": "mod.js",
+  "dependencies": {
+    "speaker": "^0.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drd/modjs.git"
+  },
+  "keywords": [
+    "audio",
+    "mod",
+    "amiga",
+    "demoscene",
+    "protracker"
+  ],
+  "author": "Eric O'Connell <eric.oconnell@github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/drd/modjs/issues"
+  },
+  "homepage": "https://github.com/drd/modjs#readme"
+}
