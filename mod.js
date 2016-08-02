@@ -312,13 +312,6 @@ class Player {
     advance() {
         const speed = (((this.sampleRate*60)/this.bpm)/4)/this.speed;
 
-        if (this.state.patternBreak) {
-            this.position++;
-            this.tick = 0;
-            this.row = 0;
-            this.state.patternBreak = false;
-        }
-
         if (this.offset>speed) {
             this.tick++;
             this.offset=0;
@@ -340,6 +333,13 @@ class Player {
         }
 
         if (this.state.newRow) {
+            if (this.state.patternBreak) {
+                this.position++;
+                this.tick = 0;
+                this.row = 0;
+                this.state.patternBreak = false;
+            }
+
             const pattern = this.module.patterns[this.module.patternTable[this.position]];
             const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
             console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
