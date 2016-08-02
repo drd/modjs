@@ -328,9 +328,6 @@ class Player {
             this.row++;
             this.tick = 0;
             this.state.newRow = true;
-            const pattern = this.module.patterns[this.module.patternTable[this.position]];
-            const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
-            console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
         } else {
             this.state.newRow = false;
         }
@@ -340,6 +337,12 @@ class Player {
             this.row = 0;
             this.state.newRow = true;
             console.log("Position: ", this.position, "Pattern: ", this.module.patternTable[this.position]);
+        }
+
+        if (this.state.newRow) {
+            const pattern = this.module.patterns[this.module.patternTable[this.position]];
+            const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
+            console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
         }
 
         if (this.position >= this.module.patternTable.length) {
