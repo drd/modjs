@@ -351,8 +351,8 @@ class Player {
     }
 
     mix(buffer) {
-        for (let i = 0; i < buffer.length; i++) {
-            let output = 0.0;
+        for (let i = 0; i < buffer.length; i+=2) {
+            let output = [0.0, 0.0];
 
             this.advance();
 
@@ -414,10 +414,11 @@ class Player {
                             );
                         }
                     }
-                    output += channelOutput;
+                    output[channel & 0x1] += channelOutput;
                 }
             }
-            buffer[i] = output;
+            buffer[i] = output[0] * 0.7 + output[1] * 0.3;
+            buffer[i+1] = output[1] * 0.7 + output[0] * 0.3;
             this.offset++;
         }
     }
@@ -427,7 +428,7 @@ function test() {
     const buffer = fs.readFileSync('airwolf.mod');
     const module = Module.fromBuffer(buffer);
     const format = {
-        channels: 1,
+        channels: 2,
         bitDepth: 32,
         float: true,
         sampleRate: 22050
