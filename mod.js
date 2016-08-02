@@ -382,17 +382,36 @@ class Player {
                     if (curChannel.noteOn) {
                         const sample = this.module.samples[curChannel.sample];
                         curChannel.samplePos += curChannel.sampleSpeed;
+                        let generatesOutput = false;
                         if (sample.repeatLength > 0) {
                             if (curChannel.samplePos > sample.repeatOffset + sample.repeatLength) {
                                 curChannel.samplePos -= sample.repeatLength;
                             }
-                            channelOutput = sample.buffer[Math.floor(curChannel.samplePos)];
+                            generatesOutput = true;
                         } else {
                             if (curChannel.samplePos < sample.length) {
-                                channelOutput = sample.buffer[Math.floor(curChannel.samplePos)];
+                                generatesOutput = true;
                             } else {
                                 curChannel.noteOn = false;
                             }
+                        }
+                        if (generatesOutput) {
+                            const samplePos = Math.floor(curChannel.samplePos);
+                            const fractional = curChannel.samplePos - samplePos;
+                            let nextPos = samplePos + 1;
+                            if (sample.repeatLength > 0) {
+                                if (nextPos > sample.repeatOffset + sample.repeatLength) {
+                                    nextPos -= sample.repeatLength;
+                                }
+                            } else {
+                                if (nextPos > sample.length) {
+                                    nextPos = samplePos;
+                                }
+                            }
+                            channelOutput = (
+                                sample.buffer[samplePos] * (1 - fractional) +
+                                sample.buffer[nextPos] * fractional
+                            );
                         }
                     }
                     output += channelOutput;
