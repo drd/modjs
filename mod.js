@@ -59,6 +59,10 @@ function invertObject(obj) {
     return Object.keys(obj).reduce((o, k) => o[obj[k]] = k && o, {});
 }
 
+function clamp(val, min, max) {
+    return Math.min(Math.max(val, min), max);
+}
+
 class Module {
     constructor(name) {
         this.name = name;
@@ -150,10 +154,9 @@ Sample.fromBuffer = function(sampleBuffer) {
     const nameArray = new Uint8Array(sampleBuffer, 0, Sample.NAME_LENGTH);
     const length = sampleBuffer.readUInt16BE(22) * 2; // sample length is in *words*
     const fineTune = sampleBuffer.readUInt8(24) & 0x0f;
-    const volume = sampleBuffer.readUInt8(25);
+    const volume = sampleBuffer.readUInt8(25) / 64.0;
     const repeatOffset = sampleBuffer.readUInt16BE(26) * 2;
     let repeatLength = sampleBuffer.readUInt16BE(28) * 2;
-
     if (repeatLength === 2) {
         repeatLength = 0;
     }
@@ -227,13 +230,20 @@ class Effect {
     }
 
     toString() {
-        if (this.type != Effect.TYPES.EXTENDED) {
+        if (!this.isNonNull()) {
+            return '';
+        }
+        else if (this.type != Effect.TYPES.EXTENDED) {
             const type = Effect.TYPES_INVERSE[this.arg1];
             return `${this.type}[${this.arg1}:${this.arg2}]`;
         } else {
             const type = Effect.EXTENDED_TYPES_INVERSE[this.arg2];
             return `${this.type}[${this.arg2}]`;
         }
+    }
+
+    get combinedValue() {
+        return this.arg1 * 16 + this.arg2;
     }
 }
 
@@ -287,7 +297,7 @@ Effect.fromUInt16 = function(uint16) {
 class Player {
     constructor(module) {
         this.module = module;
-        this.sampleRate = 22100;
+        this.sampleRate = 44100;
         this.bpm = 125;
         this.speed = 6;
         this.tick = 0;
@@ -297,7 +307,8 @@ class Player {
         this.channels = []
         this.state = {
             patternBreak: false,
-            newRow: true
+            newRow: true,
+            newTick: true,
         };
         for (let i = 0; i < module.channels; i++) {
             this.channels.push({
@@ -305,16 +316,28 @@ class Player {
                 sample: 0,
                 samplePos: 0,
                 period: 214,
+                volume: 1, // 64
             });
         }
     }
 
     advance() {
-        const speed = (((this.sampleRate*60)/this.bpm)/4)/this.speed;
+        const speed = (((this.sampleRate * 60) / this.bpm) / 4) / this.speed;
 
-        if (this.offset>speed) {
+        if (this.state.newRow) {
+            const pattern = this.module.patterns[this.module.patternTable[this.position]];
+            if (pattern) {
+                const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
+                console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
+            }
+        }
+
+        if (this.offset > speed) {
+            this.state.newTick = true;
             this.tick++;
             this.offset=0;
+        } else {
+            this.state.newTick = false;
         }
 
         if (this.tick > this.speed) {
@@ -337,12 +360,9 @@ class Player {
                 this.position++;
                 this.tick = 0;
                 this.row = 0;
+                this.offset = 0;
                 this.state.patternBreak = false;
             }
-
-            const pattern = this.module.patterns[this.module.patternTable[this.position]];
-            const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
-            console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
         }
 
         if (this.position >= this.module.patternTable.length) {
@@ -353,8 +373,6 @@ class Player {
     mix(buffer) {
         for (let i = 0; i < buffer.length; i+=2) {
             let output = [0.0, 0.0];
-
-            this.advance();
 
             if (!this.endOfSong) {
                 const pattern = this.module.patterns[this.module.patternTable[this.position]];
@@ -369,12 +387,55 @@ class Player {
                             curChannel.samplePos = 0;
                             curChannel.period = note.period;
                             curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
+                            curChannel.volume = this.module.samples[curChannel.sample].volume;
                         }
                     }
 
                     if (note.effect.isNonNull()) {
                         if (note.effect.type === Effect.TYPES.PATTERN_BREAK) {
                             this.state.patternBreak = true;
+                        }
+
+                        if (this.state.newTick) {
+                            const effect = note.effect;
+                            switch (effect.type) {
+                                case Effect.TYPES.PATTERN_BREAK:
+                                    this.state.patternBreak = true;
+                                    break;
+                                case Effect.TYPES.SLIDE_UP:
+                                    curChannel.slidePeriod = -effect.combinedValue;
+                                    break;
+                                case Effect.TYPES.SLIDE_DOWN:
+                                    curChannel.slidePeriod = effect.combinedValue;
+                                    break;
+                                case Effect.TYPES.VOLUME_SLIDE:
+                                    if (effect.arg1) {
+                                        curChannel.volumeSlide = (effect.arg1 * (this.tick - 1)) / 64.0;
+                                    } else {
+                                        curChannel.volumeSlide = -(effect.arg2 * (this.tick - 1)) / 64.0;
+                                    }
+                                case Effect.TYPES.SET_VOLUME:
+                                    curChannel.volume = effect.combinedValue / 64.0;
+                                    break;
+                            }
+                        } else {
+                            if (curChannel.slidePeriod) {
+                                let newPeriod = curChannel.period + curChannel.slidePeriod;
+                                if (newPeriod < 113) {
+                                    newPeriod = 113;
+                                    curChannel.slidePeriod = 0;
+                                } else if (newPeriod > 856) {
+                                    newPeriod = 856;
+                                    curChannel.slidePeriod = 0;
+                                }
+                                curChannel.period = newPeriod;
+                            }
+
+                            if (curChannel.volumeSlide) {
+                                curChannel.volume += curChannel.volumeSlide;
+                                curChannel.volume = clamp(curChannel.volume + curChannel.volumeSlide, 0, 1);
+                                curChannel.volumeSlide = 0;
+                            }
                         }
                     }
 
@@ -403,21 +464,23 @@ class Player {
                     output[channel & 0x1] += channelOutput;
                 }
             }
-            buffer[i] = output[0] * 0.7 + output[1] * 0.3;
-            buffer[i+1] = output[1] * 0.7 + output[0] * 0.3;
+            buffer[i] = clamp(output[0] * 0.4 + output[1] * 0.1, -1.0, 1.0);
+            buffer[i+1] = clamp(output[1] * 0.4 + output[0] * 0.1, -1.0, 1.0);
             this.offset++;
+            this.advance();
         }
     }
 }
 
 function test() {
-    const buffer = fs.readFileSync('airwolf.mod');
+    const filename = process.argv.length > 2 ? process.argv[2] : 'airwolf.mod';
+    const buffer = fs.readFileSync(filename);
     const module = Module.fromBuffer(buffer);
     const format = {
         channels: 2,
         bitDepth: 32,
         float: true,
-        sampleRate: 22050
+        sampleRate: 44100
     };
     const speaker = new Speaker(format);
 
