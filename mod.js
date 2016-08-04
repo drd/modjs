@@ -396,22 +396,8 @@ class Player {
                             }
                         }
                         if (generatesOutput) {
-                            const samplePos = Math.floor(curChannel.samplePos);
-                            const fractional = curChannel.samplePos - samplePos;
-                            let nextPos = samplePos + 1;
-                            if (sample.repeatLength > 0) {
-                                if (nextPos > sample.repeatOffset + sample.repeatLength) {
-                                    nextPos -= sample.repeatLength;
-                                }
-                            } else {
-                                if (nextPos > sample.length) {
-                                    nextPos = samplePos;
-                                }
-                            }
-                            channelOutput = (
-                                sample.buffer[samplePos] * (1 - fractional) +
-                                sample.buffer[nextPos] * fractional
-                            );
+                            let samplePos = Math.floor(curChannel.samplePos);
+                            channelOutput = sample.buffer[samplePos] * curChannel.volume;
                         }
                     }
                     output[channel & 0x1] += channelOutput;
