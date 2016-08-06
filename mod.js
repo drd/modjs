@@ -1,11 +1,16 @@
 /***
  * Revisions:
  *
+ * 8-6-2016:
+ * - add pause, forward, reverse
+ * - implement slide with volume effect
+ *
  * 8-5-2016:
  * - fix invertObject
  * - log first row of each pattern (ooops)
  * - oscillate on note/volume sliding some more
  * - log unimplemented effects on ^C
+ * - add channel toggle
  *
  * 8-3-2016:
  * - disable lerping (clicks)
