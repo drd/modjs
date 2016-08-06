@@ -325,7 +325,9 @@ class Player {
         this.row = 0;
         this.channels = []
         this.state = {
+            endOfSong: false,
             patternBreak: false,
+            paused: false,
             newPattern: true,
             newRow: true,
             newTick: true,
@@ -347,6 +349,40 @@ class Player {
             this.channels[channel].disabled = !this.channels[channel].disabled;
             console.log("dis/enabling channel", channel, this.channels[channel].disabled);
         }
+    }
+
+    reverse() {
+        if (this.tick == 0) {
+            this.position--;
+        }
+        if (this.position < 0) {
+            this.position = 0;
+        }
+        this._reset();
+    }
+
+    forward() {
+        if (this.position == this.module.patternTable.length - 1) {
+            this.state.endOfSong = true;
+        } else {
+            this.position++;
+        }
+        this._reset();
+    }
+
+    pause() {
+        this.state.paused = !this.state.paused;
+    }
+
+    _reset() {
+        this.row = 0;
+        this.tick = 0;
+        this.offset = 0;
+        Object.assign(this.state, {
+            newPattern: true,
+            newRow: true,
+            newTick: true,
+        });
     }
 
     advance() {
@@ -400,7 +436,7 @@ class Player {
         }
 
         if (this.position >= this.module.patternTable.length) {
-            this.endOfSong = true;
+            this.state.endOfSong = true;
         }
     }
 
@@ -408,7 +444,7 @@ class Player {
         for (let i = 0; i < buffer.length; i+=2) {
             let output = [0.0, 0.0];
 
-            if (!this.endOfSong) {
+            if (!this.state.endOfSong && !this.state.paused) {
                 const pattern = this.module.patterns[this.module.patternTable[this.position]];
 
                 for (let channel = 0; channel < this.module.channels; channel++) {
@@ -560,7 +596,9 @@ class Player {
             buffer[i] = clamp(output[0] * 0.4 + output[1] * 0.1, -1.0, 1.0);
             buffer[i+1] = clamp(output[1] * 0.4 + output[0] * 0.1, -1.0, 1.0);
             this.offset++;
-            this.advance();
+            if (!this.state.paused) {
+                this.advance();
+            }
         }
     }
 }
@@ -573,7 +611,7 @@ function test() {
         channels: 2,
         bitDepth: 32,
         float: true,
-        sampleRate: 44100
+        sampleRate: 44100,
     };
     const speaker = new Speaker(format);
 
@@ -583,6 +621,17 @@ function test() {
         const keyAsInt = parseInt(ch);
         if (!isNaN(keyAsInt)) {
             player.toggleChannel(keyAsInt);
+        }
+        switch (key && key.name) {
+            case 'left':
+                player.reverse();
+                break;
+            case 'right':
+                player.forward();
+                break;
+            case 'space':
+                player.pause();
+                break;
         }
         if (key && key.ctrl && key.name == 'c') {
             console.log(unimplemented);
