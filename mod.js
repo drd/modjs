@@ -418,10 +418,12 @@ class Player {
                         if (note.sample != 0) {
                             curChannel.noteOn = true;
                             curChannel.sample = note.sample - 1;
+                            curChannel.volume = this.module.samples[curChannel.sample].volume;
                             curChannel.samplePos = 0;
+                        }
+                        if (note.period != 0) {
                             curChannel.period = note.period;
                             curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
-                            curChannel.volume = this.module.samples[curChannel.sample].volume;
                         }
                     }
 
