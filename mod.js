@@ -56,7 +56,7 @@ function arrayToString(typedArray) {
 }
 
 function invertObject(obj) {
-    return Object.keys(obj).reduce((o, k) => o[obj[k]] = k && o, {});
+    return Object.keys(obj).reduce((o, k) => { o[obj[k]] = k; return o; }, {});
 }
 
 function clamp(val, min, max) {
