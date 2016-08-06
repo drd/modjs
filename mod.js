@@ -1,6 +1,23 @@
 /***
  * Revisions:
  *
+ * 8-5-2016:
+ * - fix invertObject
+ * - log first row of each pattern (ooops)
+ * - oscillate on note/volume sliding some more
+ * - log unimplemented effects on ^C
+ *
+ * 8-3-2016:
+ * - disable lerping (clicks)
+ * - working on volume slide and note sliding
+ * - switch to 44.1khz output
+ * - take filename in argv
+ *
+ * 8-2-2016:
+ * - add lerping
+ * - add stereo separation
+ * - fix pattern break bug (wait till end of division to break)
+ *
  * 8-1-2016:
  * - samples are 1-offset!
  * - "nifty" UI for showing playback
