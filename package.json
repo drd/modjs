@@ -4,6 +4,7 @@
   "description": "A universal tracker for js",
   "main": "mod.js",
   "dependencies": {
+    "keypress": "^0.2.1",
     "speaker": "^0.3.0"
   },
   "devDependencies": {},

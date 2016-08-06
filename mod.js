@@ -52,6 +52,7 @@
 const fs = require('fs');
 const Readable = require('stream').Readable;
 
+const keypress = require('keypress');
 const Speaker = require('speaker');
 
 const unimplemented = {extended: {}};
@@ -113,7 +114,6 @@ Module.fromBuffer = function(buffer) {
 
     const numPatternEntries = buffer.readUInt8(offset++);
     const ignore = buffer.readUInt8(offset++);
-
     module.patternTable = new Uint8Array(buffer.slice(offset, offset + numPatternEntries));
 
     const numPatterns = module.patternTable.reduce((max, pId) => pId > max ? pId : max, 0);
@@ -337,7 +337,15 @@ class Player {
                 samplePos: 0,
                 period: 214,
                 volume: 1, // 64
+                disabled: false,
             });
+        }
+    }
+
+    toggleChannel(channel) {
+        if (this.channels[channel]) {
+            this.channels[channel].disabled = !this.channels[channel].disabled;
+            console.log("dis/enabling channel", channel, this.channels[channel].disabled);
         }
     }
 
@@ -352,7 +360,7 @@ class Player {
         if (this.state.newRow) {
             const pattern = this.module.patterns[this.module.patternTable[this.position]];
             if (pattern) {
-                const row = pattern.channels.map(c => rightPad(c[this.row].toString(), 21));
+                const row = pattern.channels.map((c, i) => rightPad(this.channels[i].disabled ? 'xxx' : c[this.row].toString(), 21));
                 console.log(((this.row < 10) ? (' ' + this.row) : this.row) + ' ' + row.join(" | "));
             }
         }
@@ -518,7 +526,7 @@ class Player {
                     }
 
                     let channelOutput = 0;
-                    if (curChannel.noteOn) {
+                    if (curChannel.noteOn && !curChannel.disabled) {
                         if (curChannel.recalcSpeed) {
                             curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
                             curChannel.recalcSpeed = false;
@@ -567,8 +575,21 @@ function test() {
     const speaker = new Speaker(format);
 
     const player = new Player(module);
+    keypress(process.stdin);
+    process.stdin.on('keypress', function(ch, key) {
+        const keyAsInt = parseInt(ch);
+        if (!isNaN(keyAsInt)) {
+            player.toggleChannel(keyAsInt);
+        }
+        if (key && key.ctrl && key.name == 'c') {
+            process.exit(0)
+        }
+    });
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
     const playerReadable = new Readable({
         read(size) {
+            // console.time('mix');
             const outBuffer = new Float32Array(size);
             player.mix(outBuffer);
             const bytes = new Buffer(size * 4)
@@ -579,6 +600,7 @@ function test() {
             if (player.endOfSong) {
                 this.push(null);
             }
+            // console.timeEnd('mix');
         }
     });
 
