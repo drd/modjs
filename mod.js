@@ -37,6 +37,8 @@ const Readable = require('stream').Readable;
 
 const Speaker = require('speaker');
 
+const unimplemented = {extended: {}};
+
 function rightPad(string, len) {
     while (string.length < len) {
         string += " ";
@@ -451,6 +453,10 @@ class Player {
                                     break;
 
                                 default:
+                                    unimplemented[effect.type] = Effect.TYPES_INVERSE[effect.type];
+                                    if (effect.type == Effect.TYPES.EXTENDED) {
+                                        unimplemented['extended'][effect.arg1] = Effect.EXTENDED_TYPES_INVERSE[effect.arg1];
+                                    }
                             }
                             if (!sliding) {
                                 curChannel.slideTo = note.period;
@@ -562,6 +568,10 @@ function test() {
     playerReadable.pipe(speaker);
 }
 
+process.on('SIGINT', function() {
+    console.log(unimplemented);
+    process.exit(0);
+});
 test();
 
 module.exports = {Module, Sample, Pattern, Note, Effect};
