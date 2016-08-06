@@ -433,9 +433,9 @@ class Player {
 
                                 case Effect.TYPES.VOLUME_SLIDE:
                                     if (effect.arg1) {
-                                        curChannel.volumeSlide = (effect.arg1 * (this.speed - 1)) / 64.0;
+                                        curChannel.volumeSlide = (effect.arg1 * (this.tick - 1)) / 64.0;
                                     } else {
-                                        curChannel.volumeSlide = -(effect.arg2 * (this.speed - 1)) / 64.0;
+                                        curChannel.volumeSlide = -(effect.arg2 * (this.tick - 1)) / 64.0;
                                     }
                                     break;
 
