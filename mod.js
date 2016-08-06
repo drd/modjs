@@ -307,6 +307,7 @@ class Player {
         this.channels = []
         this.state = {
             patternBreak: false,
+            newPattern: true,
             newRow: true,
             newTick: true,
         };
@@ -323,6 +324,11 @@ class Player {
 
     advance() {
         const speed = (((this.sampleRate * 60) / this.bpm) / 4) / this.speed;
+
+        if (this.state.newPattern) {
+            console.log("Position: ", this.position, "Pattern: ", this.module.patternTable[this.position]);
+            this.state.newPattern = false;
+        }
 
         if (this.state.newRow) {
             const pattern = this.module.patterns[this.module.patternTable[this.position]];
@@ -352,7 +358,7 @@ class Player {
             this.position++;
             this.row = 0;
             this.state.newRow = true;
-            console.log("Position: ", this.position, "Pattern: ", this.module.patternTable[this.position]);
+            this.state.newPattern = true;
         }
 
         if (this.state.newRow) {
@@ -361,6 +367,7 @@ class Player {
                 this.tick = 0;
                 this.row = 0;
                 this.offset = 0;
+                this.state.newPattern = true;
                 this.state.patternBreak = false;
             }
         }
