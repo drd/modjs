@@ -422,6 +422,7 @@ class Player {
                             curChannel.samplePos = 0;
                         }
                         if (note.period != 0) {
+                            curChannel.noteOn = true;
                             curChannel.period = note.period;
                             curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
                         }
@@ -460,9 +461,9 @@ class Player {
 
                                 case Effect.TYPES.VOLUME_SLIDE:
                                     if (effect.arg1) {
-                                        curChannel.volumeSlide = (effect.arg1 * (this.tick - 1)) / 64.0;
+                                        curChannel.volumeSlide = effect.arg1 / 64.0;
                                     } else {
-                                        curChannel.volumeSlide = -(effect.arg2 * (this.tick - 1)) / 64.0;
+                                        curChannel.volumeSlide = -effect.arg2 / 64.0;
                                     }
                                     break;
 
