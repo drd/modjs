@@ -399,33 +399,64 @@ class Player {
                     }
 
                     if (note.effect.isNonNull()) {
+                        let sliding = false;
+
                         if (note.effect.type === Effect.TYPES.PATTERN_BREAK) {
                             this.state.patternBreak = true;
                         }
 
-                        if (this.state.newTick) {
+                        if (this.state.newRow) {
                             const effect = note.effect;
                             switch (effect.type) {
                                 case Effect.TYPES.PATTERN_BREAK:
                                     this.state.patternBreak = true;
                                     break;
+
                                 case Effect.TYPES.SLIDE_UP:
                                     curChannel.slidePeriod = -effect.combinedValue;
                                     break;
+
                                 case Effect.TYPES.SLIDE_DOWN:
                                     curChannel.slidePeriod = effect.combinedValue;
                                     break;
+
+                                case Effect.TYPES.SLIDE_TO_NOTE:
+                                    // need to cancel this somehow
+                                    if (effect.combinedValue != 0 ) {
+                                        curChannel.slideToSpeed = effect.combinedValue;
+                                    }
+                                    curChannel.slideTo = note.period;
+                                    sliding = true;
+                                    break;
+
                                 case Effect.TYPES.VOLUME_SLIDE:
                                     if (effect.arg1) {
                                         curChannel.volumeSlide = (effect.arg1 * (this.speed - 1)) / 64.0;
                                     } else {
                                         curChannel.volumeSlide = -(effect.arg2 * (this.speed - 1)) / 64.0;
                                     }
+                                    break;
+
                                 case Effect.TYPES.SET_VOLUME:
                                     curChannel.volume = effect.combinedValue / 64.0;
                                     break;
+
+                                case Effect.TYPES.SET_SPEED:
+                                    const speed = effect.combinedValue;
+                                    if (speed <= 32) {
+                                        this.speed = speed;
+                                    } else {
+                                        this.bpm = speed;
+                                    }
+                                    break;
+
+                                default:
                             }
-                        } else {
+                            if (!sliding) {
+                                curChannel.slideTo = note.period;
+                                curChannel.slideToSpeed = 0;
+                            }
+                        } else if (this.state.newTick) {
                             if (curChannel.slidePeriod) {
                                 let newPeriod = curChannel.period + curChannel.slidePeriod;
                                 if (newPeriod < 113) {
@@ -436,6 +467,23 @@ class Player {
                                     curChannel.slidePeriod = 0;
                                 }
                                 curChannel.period = newPeriod;
+                                curChannel.recalcSpeed = true;
+                            }
+
+                            if (curChannel.slideToSpeed) {
+                                if (curChannel.period < curChannel.slideTo) {
+                                    curChannel.period += curChannel.slideToSpeed;
+                                    if (curChannel.period > curChannel.slideTo) {
+                                        curChannel.period = curChannel.slideTo;
+                                    }
+                                    curChannel.recalcSpeed = true;
+                                } else if (curChannel.period > curChannel.slideTo) {
+                                    curChannel.period -= curChannel.slideToSpeed;
+                                    if (curChannel.period < curChannel.slideTo) {
+                                        curChannel.period = curChannel.slideTo;
+                                    }
+                                    curChannel.recalcSpeed = true;
+                                }
                             }
 
                             if (curChannel.volumeSlide) {
@@ -448,6 +496,10 @@ class Player {
 
                     let channelOutput = 0;
                     if (curChannel.noteOn) {
+                        if (curChannel.recalcSpeed) {
+                            curChannel.sampleSpeed = 7093789.2/(curChannel.period*2) / this.sampleRate;
+                            curChannel.recalcSpeed = false;
+                        }
                         const sample = this.module.samples[curChannel.sample];
                         curChannel.samplePos += curChannel.sampleSpeed;
                         let generatesOutput = false;
