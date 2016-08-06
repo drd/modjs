@@ -257,7 +257,7 @@ class Effect {
             return `${this.type}[${this.arg1}:${this.arg2}]`;
         } else {
             const type = Effect.EXTENDED_TYPES_INVERSE[this.arg2];
-            return `${this.type}[${this.arg2}]`;
+            return `${this.type}[${this.arg1}:${this.arg2}]`;
         }
     }
 
@@ -495,6 +495,15 @@ class Player {
                                     sliding = true;
                                     break;
 
+                                case Effect.TYPES.SLIDE_WITH_VOLUME:
+                                    sliding = true;
+                                    if (effect.arg1) {
+                                        curChannel.volumeSlide = effect.arg1 / 64.0;
+                                    } else {
+                                        curChannel.volumeSlide = -effect.arg2 / 64.0;
+                                    }
+                                    break;
+
                                 case Effect.TYPES.VOLUME_SLIDE:
                                     if (effect.arg1) {
                                         curChannel.volumeSlide = effect.arg1 / 64.0;
@@ -525,6 +534,7 @@ class Player {
                             if (!sliding) {
                                 curChannel.slideTo = note.period;
                                 curChannel.slideToSpeed = 0;
+                                curChannel.slidePeriod = 0;
                             }
                         } else if (this.state.newTick) {
                             if (curChannel.slidePeriod) {
