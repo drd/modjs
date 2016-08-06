@@ -584,6 +584,7 @@ function test() {
             player.toggleChannel(keyAsInt);
         }
         if (key && key.ctrl && key.name == 'c') {
+            console.log(unimplemented);
             process.exit(0)
         }
     });
