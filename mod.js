@@ -54,11 +54,13 @@
 
 "use strict";
 
-const fs = require('fs');
+// const fs = require('fs');
 const Readable = require('stream').Readable;
 
-const keypress = require('keypress');
-const Speaker = require('speaker');
+const base64 = require('base64-js');
+const Buffer = require('buffer/').Buffer;
+// const keypress = require('keypress');
+const Speaker = require('audio-speaker');
 
 const unimplemented = {extended: {}};
 
@@ -391,6 +393,7 @@ class Player {
     }
 
     advance() {
+        console.log(this.speed);
         const speed = (((this.sampleRate * 60) / this.bpm) / 4) / this.speed;
 
         if (this.state.newPattern) {
@@ -619,60 +622,138 @@ class Player {
 }
 
 function test() {
-    const filename = process.argv.length > 2 ? process.argv[2] : 'airwolf.mod';
-    const buffer = fs.readFileSync(filename);
+    // const filename = process.argv.length > 2 ? process.argv[2] : 'airwolf.mod';
+    // const buffer = fs.readFileSync(filename);
+    const file = require('./overload.mod');
+    const byteArray = base64.toByteArray(file);
+    const buffer = Buffer.from(byteArray);
     const module = Module.fromBuffer(buffer);
     const format = {
         channels: 2,
         bitDepth: 32,
         float: true,
+        interleaved: true,
+
         sampleRate: 44100,
     };
     const speaker = new Speaker(format);
 
     const player = new Player(module);
-    keypress(process.stdin);
-    process.stdin.on('keypress', function(ch, key) {
-        const keyAsInt = parseInt(ch);
-        if (!isNaN(keyAsInt)) {
-            player.toggleChannel(keyAsInt);
-        }
-        switch (key && key.name) {
-            case 'left':
-                player.reverse();
-                break;
-            case 'right':
-                player.forward();
-                break;
-            case 'space':
-                player.pause();
-                break;
-        }
-        if (key && key.ctrl && key.name == 'c') {
-            console.log(unimplemented);
-            process.exit(0)
-        }
-    });
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    const playerReadable = new Readable({
-        read(size) {
-            // console.time('mix');
-            const outBuffer = new Float32Array(size);
-            player.mix(outBuffer);
-            const bytes = new Buffer(size * 4)
-            for (let i = 0; i < size; i++) {
-                bytes.writeFloatLE(outBuffer[i], i * 4);
-            }
-            this.push(bytes);
-            if (player.endOfSong) {
-                this.push(null);
-            }
-            // console.timeEnd('mix');
-        }
-    });
+    // keypress(process.stdin);
+    // process.stdin.on('keypress', function(ch, key) {
+    //     const keyAsInt = parseInt(ch);
+    //     if (!isNaN(keyAsInt)) {
+    //         player.toggleChannel(keyAsInt);
+    //     }
+    //     switch (key && key.name) {
+    //         case 'left':
+    //             player.reverse();
+    //             break;
+    //         case 'right':
+    //             player.forward();
+    //             break;
+    //         case 'space':
+    //             player.pause();
+    //             break;
+    //     }
+    //     if (key && key.ctrl && key.name == 'c') {
+    //         console.log(unimplemented);
+    //         process.exit(0)
+    //     }
+    // });
+    // process.stdin.setRawMode(true);
+    // process.stdin.resume();
+    // const util = require('audio-buffer-utils');
+    // const pcm = require('pcm-util');
 
-    playerReadable.pipe(speaker);
+    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var audioProcessor = audioCtx.createScriptProcessor(1024, 2, 2);
+    var filterNode = audioCtx.createBiquadFilter();
+    var compressorNode = audioCtx.createDynamicsCompressor();
+    filterNode.frequency.value=6000;
+
+    var button = document.createElement("button");
+    button.innerText = "Pause";
+    button.addEventListener("click", function() {
+        player.pause();
+    })
+    document.documentElement.appendChild(button);
+
+    var outBuffer = new Float32Array(1024 * 2);
+    audioProcessor.onaudioprocess = function(evt) {
+        // console.time('mix');
+        player.mix(outBuffer);
+        const audioBuffer = evt.outputBuffer;
+        const left = audioBuffer.getChannelData(0);
+        const right = audioBuffer.getChannelData(1);
+        for (let i = 0; i < 1024; i++) {
+            left[i] = outBuffer[i * 2];
+            right[i] = outBuffer[i * 2 + 1];
+        }
+        if (player.endOfSong) {
+            audioProcessor.disconnect(audioCtx.destination);
+        }
+        // console.timeEnd('mix');
+    };
+
+    audioProcessor.connect(filterNode);
+    filterNode.connect(compressorNode);
+    compressorNode.connect(audioCtx.destination);
+    // audioSource.buffer = audioBuffer;
+    // audioSource.loop = true;
+    // audioSource.connect(audioCtx.destination);
+    //
+    // player.mix(audioBuffer);
+    //
+    // var outBuffer = new Float32Array(1024 * 2);
+    //
+    // setInterval(function() {
+    //     player.mix(outBuffer);
+    //     const left = audioBuffer.getChannelData(0);
+    //     const right = audioBuffer.getChannelData(1);
+    //     for (let i = 0; i < 1024; i++) {
+    //         left[i] = outBuffer[i * 2];
+    //         right[i] = outBuffer[i * 2 + 1];
+    //     }
+    //     if (player.endOfSong) {
+    //         audioSource.stop();
+    //     }
+    // }, 1024/audioCtx.sampleRate * 1000);
+    //
+    // audioSource.start();
+
+    // class ModReadable extends Readable {
+    //     _read(size) {
+    //         console.time('mix');
+    //         var abuf = util.create(2, 1024, 44100);
+    //         const outBuffer = new Float32Array(1024 * 2);
+    //         player.mix(outBuffer);
+    //
+    //         util.fill(abuf, function (v, ch, i) {
+    //             return outBuffer[i * 2 + ch];
+    //             // return Math.sin(Math.PI * 2 * ((count + i)/44100) * (338 + ch*2) );
+    //         });
+    //
+    //         this.push(pcm.toBuffer(abuf, {
+    //             float: true
+    //         }));
+    //         if (player.endOfSong) {
+    //             this.push(null);
+    //         }
+    //         // const bytes = new Buffer(size * 4);
+    //         // for (let i = 0; i < size; i++) {
+    //         //     bytes.writeFloatLE(outBuffer[i], i * 4);
+    //         // }
+    //         // this.push(bytes);
+    //         // if (player.endOfSong) {
+    //         //     this.push(null);
+    //         // }
+    //         console.timeEnd('mix');
+    //     }
+    // };
+    // const playerReadable = new ModReadable();
+    //
+    // playerReadable.pipe(speaker);
 }
 
 process.on('SIGINT', function() {

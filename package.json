@@ -4,12 +4,19 @@
   "description": "A universal tracker for js",
   "main": "mod.js",
   "dependencies": {
+    "audio-buffer-utils": "^3.1.2",
+    "audio-speaker": "^1.2.4",
+    "base64-js": "^1.1.2",
+    "base64-loader": "^1.0.0",
+    "buffer": "^4.7.1",
     "keypress": "^0.2.1",
-    "speaker": "^0.3.0"
+    "pcm-util": "^2.0.2",
+    "speaker": "^0.3.0",
+    "webpack": "^1.13.1"
   },
   "devDependencies": {},
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "webpack-dev-server --port 3000"
   },
   "repository": {
     "type": "git",
