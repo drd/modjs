@@ -6,17 +6,24 @@
   "dependencies": {
     "audio-buffer-utils": "^3.1.2",
     "audio-speaker": "^1.2.4",
+    "babel-core": "^6.13.2",
+    "babel-loader": "^6.2.4",
+    "babel-plugin-transform-class-properties": "^6.11.5",
+    "babel-preset-es2015": "^6.13.2",
+    "babel-preset-react": "^6.11.1",
     "base64-js": "^1.1.2",
     "base64-loader": "^1.0.0",
     "buffer": "^4.7.1",
     "keypress": "^0.2.1",
     "pcm-util": "^2.0.2",
+    "react": "^15.3.0",
+    "react-dom": "^15.3.0",
     "speaker": "^0.3.0",
     "webpack": "^1.13.1"
   },
   "devDependencies": {},
   "scripts": {
-    "start": "webpack-dev-server --port 3000"
+    "start": "webpack-dev-server --port 3000 --inline"
   },
   "repository": {
     "type": "git",
